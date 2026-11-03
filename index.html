@@ -1,0 +1,663 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>HydroLogic - Scientific Hydration & Watch Companion</title>
+    
+    <!-- PWA & Mobile Capabilities -->
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="theme-color" content="#0284c7">
+    <link rel="manifest" href="manifest.json">
+    
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        hydro: {
+                            50: '#f0f9ff',
+                            100: '#e0f2fe',
+                            400: '#38bdf8',
+                            500: '#0ea5e9',
+                            600: '#0284c7',
+                            700: '#0369a1',
+                            900: '#0c4a6e',
+                        }
+                    },
+                    animation: {
+                        'wave': 'wave 6s ease-in-out infinite',
+                        'float': 'float 3s ease-in-out infinite',
+                        'pulse-subtle': 'pulseSubtle 2s ease-in-out infinite',
+                    },
+                    keyframes: {
+                        wave: {
+                            '0%, 100%': { transform: 'translateY(0) rotate(0deg)' },
+                            '50%': { transform: 'translateY(-8px) rotate(3deg)' },
+                        },
+                        float: {
+                            '0%, 100%': { transform: 'translateY(0px)' },
+                            '50%': { transform: 'translateY(-6px)' },
+                        },
+                        pulseSubtle: {
+                            '0%, 100%': { opacity: 1 },
+                            '50%': { opacity: 0.75 },
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <!-- Leaflet CSS & JS for Public Fountain Mapping -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+    
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    
+    <style>
+        ::-webkit-scrollbar { width: 4px; }
+        ::-webkit-scrollbar-thumb { background: rgba(14, 165, 233, 0.3); border-radius: 4px; }
+        .leaflet-container { width: 100%; height: 100%; border-radius: 1rem; z-index: 10; }
+        .no-select { user-select: none; -webkit-user-select: none; }
+        .glass-panel { background: rgba(255, 255, 255, 0.85); backdrop-filter: blur(12px); }
+        .dark .glass-panel { background: rgba(15, 23, 42, 0.85); backdrop-filter: blur(12px); }
+    </style>
+</head>
+<body class="bg-slate-900 text-slate-100 font-sans antialiased min-h-screen flex flex-col items-center justify-center p-0 sm:p-4 no-select overflow-x-hidden">
+
+    <!-- Privacy Lockout Overlay (Triggered if mandatory GDPR consent is rejected) -->
+    <div id="gdpr-lockout" class="hidden fixed inset-0 z-[100] bg-slate-950 flex flex-col items-center justify-center p-6 text-center">
+        <div class="w-16 h-16 rounded-full bg-red-500/10 border border-red-500/30 flex items-center justify-center mb-4 text-red-500">
+            <i data-lucide="shield-alert" class="w-8 h-8"></i>
+        </div>
+        <h2 class="text-2xl font-bold text-white mb-2">Access Restricted</h2>
+        <p class="text-slate-400 max-w-md text-sm mb-6">
+            HydroLogic requires local data storage permissions to function offline and calculate personal hydration metrics safely. Because mandatory privacy terms were not accepted, access is disabled.
+        </p>
+        <button onclick="HydroApp.reopenConsentModal()" class="px-6 py-3 bg-hydro-600 hover:bg-hydro-500 text-white rounded-xl font-semibold shadow-lg shadow-hydro-600/30 transition-all">
+            Review & Grant Consents
+        </button>
+    </div>
+
+    <!-- Mandatory GDPR Privacy Consent Modal -->
+    <div id="gdpr-modal" class="hidden fixed inset-0 z-[90] bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4">
+        <div class="bg-slate-900 border border-slate-800 rounded-3xl max-w-lg w-full p-6 shadow-2xl flex flex-col max-h-[90vh]">
+            <div class="flex items-center space-x-3 mb-4">
+                <div class="p-2.5 bg-hydro-500/10 text-hydro-400 rounded-2xl border border-hydro-500/20">
+                    <i data-lucide="shield-check" class="w-6 h-6"></i>
+                </div>
+                <div>
+                    <h3 class="text-lg font-bold text-white">Privacy & Consents</h3>
+                    <p class="text-xs text-slate-400">GDPR / ePrivacy Compliance (v1.0)</p>
+                </div>
+            </div>
+            
+            <p class="text-xs text-slate-300 mb-4 leading-relaxed">
+                HydroLogic operates as an offline-first app. Please review our operational storage terms and optional services below:
+            </p>
+
+            <div class="space-y-3 overflow-y-auto pr-1 mb-6 flex-1">
+                <div class="p-3.5 bg-slate-800/60 border border-slate-700/80 rounded-2xl">
+                    <div class="flex items-center justify-between mb-1">
+                        <span class="text-sm font-semibold text-white flex items-center gap-1.5">
+                            Local Engine & Data Storage
+                            <span class="text-[10px] px-2 py-0.5 rounded-full bg-red-500/20 text-red-400 font-bold uppercase">Mandatory</span>
+                        </span>
+                        <input type="checkbox" checked disabled class="w-4 h-4 text-hydro-500 rounded accent-hydro-500">
+                    </div>
+                    <p class="text-xs text-slate-400">Stores hydration logs, local settings, and points on your device without transmitting private data.</p>
+                </div>
+
+                <div class="p-3.5 bg-slate-800/60 border border-slate-700/80 rounded-2xl">
+                    <div class="flex items-center justify-between mb-1">
+                        <span class="text-sm font-semibold text-white flex items-center gap-1.5">
+                            Geolocation Services
+                            <span class="text-[10px] px-2 py-0.5 rounded-full bg-slate-700 text-slate-300 font-bold uppercase">Optional</span>
+                        </span>
+                        <input type="checkbox" id="consent-geo" class="w-4 h-4 text-hydro-500 rounded accent-hydro-500">
+                    </div>
+                    <p class="text-xs text-slate-400">Enables GPS coordinates for locating nearby drinking water fountains and proximity alerts.</p>
+                </div>
+
+                <div class="p-3.5 bg-slate-800/60 border border-slate-700/80 rounded-2xl">
+                    <div class="flex items-center justify-between mb-1">
+                        <span class="text-sm font-semibold text-white flex items-center gap-1.5">
+                            Local Ad Sandbox & Diagnostics
+                            <span class="text-[10px] px-2 py-0.5 rounded-full bg-slate-700 text-slate-300 font-bold uppercase">Optional</span>
+                        </span>
+                        <input type="checkbox" id="consent-ads" class="w-4 h-4 text-hydro-500 rounded accent-hydro-500">
+                    </div>
+                    <p class="text-xs text-slate-400">Allows non-personalized, offline fallback ad placeholders and local diagnostics.</p>
+                </div>
+            </div>
+
+            <div class="flex gap-3">
+                <button onclick="HydroApp.rejectMandatoryGDPR()" class="flex-1 py-3 px-4 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl font-medium text-xs transition-all">
+                    Reject All & Close
+                </button>
+                <button onclick="HydroApp.acceptGDPRConsents()" class="flex-1 py-3 px-4 bg-hydro-600 hover:bg-hydro-500 text-white rounded-xl font-semibold text-xs shadow-lg shadow-hydro-600/30 transition-all">
+                    Accept & Continue
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Universal Terms of Service & Medical Disclaimer Modal -->
+    <div id="terms-modal" class="hidden fixed inset-0 z-[95] bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4">
+        <div class="bg-slate-900 border border-slate-800 rounded-3xl max-w-xl w-full p-6 shadow-2xl flex flex-col max-h-[85vh]">
+            <div class="flex items-center justify-between pb-4 border-b border-slate-800">
+                <div class="flex items-center space-x-3">
+                    <div class="p-2.5 bg-indigo-500/10 text-indigo-400 rounded-2xl border border-indigo-500/20">
+                        <i data-lucide="scale" class="w-6 h-6"></i>
+                    </div>
+                    <div>
+                        <h3 class="text-base font-bold text-white">Global Terms & Legal Disclaimers</h3>
+                        <p class="text-xs text-slate-400">Global Standard Edition 2026</p>
+                    </div>
+                </div>
+                <button onclick="HydroApp.toggleTermsModal(false)" class="text-slate-400 hover:text-white p-2 rounded-xl">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+
+            <div class="space-y-4 overflow-y-auto pr-2 my-4 text-xs text-slate-300 leading-relaxed">
+                <div>
+                    <h4 class="font-bold text-white text-sm mb-1 text-hydro-400">1. Medical & Health Disclaimer</h4>
+                    <p>HydroLogic is designed solely for general educational, fitness, and wellness tracking purposes. <strong>This app does not provide medical advice, diagnosis, or treatment.</strong> Consult a physician for specific health conditions.</p>
+                </div>
+                <div>
+                    <h4 class="font-bold text-white text-sm mb-1 text-hydro-400">2. Worldwide Limitation of Liability</h4>
+                    <p>To the maximum extent permitted by applicable laws worldwide (EU/UK, US, LATAM, APAC), creators and affiliates are not liable for any direct, indirect, or incidental damages arising from your reliance on hydration targets.</p>
+                </div>
+                <div>
+                    <h4 class="font-bold text-white text-sm mb-1 text-hydro-400">3. Fountain Mapping Disclaimer</h4>
+                    <p>Map markers rely on crowdsourced data. We make no guarantees regarding water potability, safety, or physical existence. Users must independently inspect water sources.</p>
+                </div>
+                <div>
+                    <h4 class="font-bold text-white text-sm mb-1 text-hydro-400">4. HydroPoints & Rewards</h4>
+                    <p>Points are non-transferable virtual tokens with no real-world cash value, redeemable solely in-app for simulated Ad-Free passes.</p>
+                </div>
+            </div>
+
+            <button onclick="HydroApp.toggleTermsModal(false)" class="w-full py-3 bg-slate-800 hover:bg-slate-700 text-white rounded-xl font-semibold text-xs transition-all">
+                I Understand & Close
+            </button>
+        </div>
+    </div>
+
+    <!-- Main Container Card -->
+    <div class="w-full max-w-md bg-slate-900 border border-slate-800 rounded-none sm:rounded-3xl shadow-2xl flex flex-col min-h-screen sm:min-h-[840px] overflow-hidden relative">
+        
+        <!-- Header Bar -->
+        <header class="p-4 border-b border-slate-800/80 flex items-center justify-between bg-slate-900/90 backdrop-blur z-20">
+            <div class="flex items-center space-x-2.5">
+                <div class="w-9 h-9 rounded-2xl bg-gradient-to-tr from-hydro-600 to-hydro-400 flex items-center justify-center shadow-lg shadow-hydro-500/20">
+                    <i data-lucide="droplet" class="w-5 h-5 text-white fill-white"></i>
+                </div>
+                <div>
+                    <h1 class="text-base font-bold text-white tracking-tight flex items-center gap-1.5">
+                        HydroLogic
+                        <span class="text-[9px] px-1.5 py-0.5 rounded-full bg-hydro-500/20 text-hydro-400 border border-hydro-500/30 uppercase font-semibold">PWA</span>
+                    </h1>
+                    <p class="text-[10px] text-slate-400 font-medium">Scientific Hydration</p>
+                </div>
+            </div>
+
+            <div class="flex items-center space-x-1.5">
+                <button onclick="HydroApp.toggleWatchView()" title="Toggle Smartwatch View" class="p-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 transition-all border border-slate-700/60">
+                    <i data-lucide="watch" class="w-4 h-4"></i>
+                </button>
+                <div class="flex items-center space-x-1 bg-amber-500/10 border border-amber-500/30 text-amber-400 px-2.5 py-1 rounded-xl text-xs font-bold">
+                    <i data-lucide="coins" class="w-3.5 h-3.5"></i>
+                    <span id="points-display">0</span>
+                </div>
+            </div>
+        </header>
+
+        <!-- Dynamic Simulated Ad Banner -->
+        <div id="ad-banner" class="bg-gradient-to-r from-slate-800 via-slate-850 to-slate-800 border-b border-slate-800 px-3 py-1.5 flex items-center justify-between text-xs text-slate-400 z-10">
+            <div class="flex items-center space-x-2 overflow-hidden">
+                <span class="text-[9px] bg-slate-700 px-1 rounded font-mono text-slate-300">AD</span>
+                <span class="truncate text-[11px] text-slate-300">Hydrate smart with insulated stainless bottles.</span>
+            </div>
+            <button onclick="HydroApp.redeemAdFree()" class="text-[10px] text-hydro-400 font-semibold hover:underline shrink-0 ml-2">Remove Ads</button>
+        </div>
+
+        <!-- MAIN APP CONTENT PANELS -->
+        <main class="flex-1 overflow-y-auto relative flex flex-col p-4 pb-20">
+            
+            <!-- SMARTWATCH COMPANION DIAL VIEW -->
+            <div id="watch-view" class="hidden flex-1 flex flex-col items-center justify-center my-auto">
+                <div class="w-64 h-64 rounded-full border-4 border-slate-700 bg-slate-950 p-4 relative shadow-2xl flex flex-col items-center justify-center text-center">
+                    <div class="w-12 h-12 mb-1" id="watch-avatar-box"></div>
+                    <div class="text-2xl font-black text-white tracking-tight" id="watch-pct">0%</div>
+                    <div class="text-[10px] text-slate-400 font-medium" id="watch-sub">0 / 2500 mL</div>
+                    <div class="flex items-center space-x-2 mt-3">
+                        <button onclick="HydroApp.quickAddWater(250)" class="px-3 py-1.5 bg-hydro-600 active:scale-95 text-white rounded-full text-xs font-bold shadow">+250ml</button>
+                        <button onclick="HydroApp.quickAddWater(500)" class="px-3 py-1.5 bg-slate-800 active:scale-95 text-slate-200 rounded-full text-xs font-bold border border-slate-700">+500ml</button>
+                    </div>
+                    <button onclick="HydroApp.switchTab('map')" class="mt-2 text-[10px] text-hydro-400 flex items-center gap-1 hover:underline">
+                        <i data-lucide="map-pin" class="w-3 h-3"></i> Find Fountain
+                    </button>
+                </div>
+                <p class="text-[11px] text-slate-500 mt-4 text-center">Watch Companion Simulator Mode</p>
+            </div>
+
+            <!-- TAB 1: DASHBOARD VIEW -->
+            <div id="tab-dashboard" class="space-y-4">
+                <div class="glass-panel p-4 rounded-2xl border border-slate-800 flex items-start space-x-4 relative overflow-hidden">
+                    <div class="w-20 h-20 shrink-0 relative flex items-center justify-center" id="avatar-container"></div>
+                    <div class="flex-1">
+                        <div class="flex items-center justify-between mb-1">
+                            <span class="text-xs font-bold text-hydro-400 uppercase tracking-wider" id="avatar-emotion-label">Hydro • Dehydrated</span>
+                            <span class="text-[10px] text-slate-400 bg-slate-800 px-2 py-0.5 rounded-full">22°C Clear</span>
+                        </div>
+                        <p class="text-xs text-slate-200 font-medium leading-relaxed" id="avatar-dialogue">
+                            "Your body needs water to maintain cognitive focus. Let's start sipping!"
+                        </p>
+                    </div>
+                </div>
+
+                <div class="bg-slate-950/60 p-6 rounded-3xl border border-slate-800/80 flex flex-col items-center relative overflow-hidden">
+                    <div class="relative w-48 h-48 rounded-full border-4 border-slate-800 flex items-center justify-center overflow-hidden shadow-inner my-2">
+                        <div id="liquid-wave" class="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-hydro-700 to-hydro-500 transition-all duration-700 ease-out flex items-center justify-center" style="height: 0%;">
+                            <div class="absolute -top-4 left-0 right-0 h-4 bg-hydro-400/40 rounded-full animate-wave"></div>
+                        </div>
+                        <div class="relative z-10 text-center">
+                            <span class="text-4xl font-black text-white tracking-tight" id="gauge-pct">0%</span>
+                            <div class="text-xs font-semibold text-slate-300 mt-0.5" id="gauge-detail">0 / 2500 mL</div>
+                            <div class="text-[10px] text-slate-400 mt-1" id="gauge-remaining">Remaining: 2500 mL</div>
+                        </div>
+                    </div>
+
+                    <div class="w-full grid grid-cols-4 gap-2 mt-4">
+                        <button onclick="HydroApp.addDrink('water', 250)" class="p-2.5 bg-slate-800/90 hover:bg-slate-750 active:scale-95 rounded-2xl border border-slate-700/60 flex flex-col items-center justify-center transition-all">
+                            <div class="w-7 h-7 rounded-full bg-hydro-500/20 text-hydro-400 flex items-center justify-center mb-1"><i data-lucide="droplet" class="w-4 h-4"></i></div>
+                            <span class="text-[11px] font-bold text-white">Water</span>
+                            <span class="text-[9px] text-slate-400">+250ml</span>
+                        </button>
+                        <button onclick="HydroApp.addDrink('tea', 250)" class="p-2.5 bg-slate-800/90 hover:bg-slate-750 active:scale-95 rounded-2xl border border-slate-700/60 flex flex-col items-center justify-center transition-all">
+                            <div class="w-7 h-7 rounded-full bg-amber-500/20 text-amber-400 flex items-center justify-center mb-1"><i data-lucide="cup-soda" class="w-4 h-4"></i></div>
+                            <span class="text-[11px] font-bold text-white">Tea (90%)</span>
+                            <span class="text-[9px] text-slate-400">+225ml</span>
+                        </button>
+                        <button onclick="HydroApp.addDrink('coffee', 200)" class="p-2.5 bg-slate-800/90 hover:bg-slate-750 active:scale-95 rounded-2xl border border-slate-700/60 flex flex-col items-center justify-center transition-all">
+                            <div class="w-7 h-7 rounded-full bg-yellow-600/20 text-yellow-500 flex items-center justify-center mb-1"><i data-lucide="coffee" class="w-4 h-4"></i></div>
+                            <span class="text-[11px] font-bold text-white">Coffee (80%)</span>
+                            <span class="text-[9px] text-slate-400">+160ml</span>
+                        </button>
+                        <button onclick="HydroApp.addDrink('electrolyte', 300)" class="p-2.5 bg-slate-800/90 hover:bg-slate-750 active:scale-95 rounded-2xl border border-slate-700/60 flex flex-col items-center justify-center transition-all">
+                            <div class="w-7 h-7 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center mb-1"><i data-lucide="zap" class="w-4 h-4"></i></div>
+                            <span class="text-[11px] font-bold text-white">Sport (115%)</span>
+                            <span class="text-[9px] text-slate-400">+345ml</span>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4">
+                    <div class="flex items-center justify-between mb-3">
+                        <h3 class="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
+                            <i data-lucide="history" class="w-3.5 h-3.5 text-hydro-400"></i> Today's Log
+                        </h3>
+                        <button onclick="HydroApp.clearLogs()" class="text-[10px] text-red-400 hover:underline">Clear</button>
+                    </div>
+                    <div id="log-list" class="space-y-2 max-h-40 overflow-y-auto pr-1"></div>
+                </div>
+            </div>
+
+            <!-- TAB 2: FOUNTAIN MAP & CROWD-SOURCING -->
+            <div id="tab-map" class="hidden space-y-4 flex-1 flex flex-col">
+                <div class="bg-slate-900 border border-slate-800 p-3 rounded-2xl flex items-center justify-between">
+                    <div>
+                        <div class="text-xs font-bold text-white flex items-center gap-1"><i data-lucide="navigation" class="w-3.5 h-3.5 text-hydro-400"></i> Fountain Spotter</div>
+                        <p class="text-[10px] text-slate-400">Scanning public fountains...</p>
+                    </div>
+                    <button onclick="HydroApp.enablePinMode()" class="px-3 py-1.5 bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all">
+                        <i data-lucide="map-pin-plus" class="w-4 h-4"></i> Pin Fountain (+10 pts)
+                    </button>
+                </div>
+
+                <div class="w-full h-80 rounded-2xl border border-slate-800 overflow-hidden relative shadow-lg">
+                    <div id="fountain-map" class="w-full h-full"></div>
+                </div>
+
+                <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4 flex-1 overflow-hidden flex flex-col">
+                    <h3 class="text-xs font-bold text-slate-300 uppercase tracking-wider mb-2">Nearby Water Sources</h3>
+                    <div id="fountains-list" class="space-y-2 overflow-y-auto flex-1 pr-1"></div>
+                </div>
+            </div>
+
+            <!-- TAB 3: SETTINGS -->
+            <div id="tab-settings" class="hidden space-y-4">
+                <div class="bg-slate-900 border border-slate-800 p-4 rounded-2xl space-y-3">
+                    <h3 class="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
+                        <i data-lucide="sliders" class="w-3.5 h-3.5 text-hydro-400"></i> Scientific Parameters
+                    </h3>
+                    <div class="grid grid-cols-2 gap-3">
+                        <div>
+                            <label class="text-[11px] font-medium text-slate-400 block mb-1">Body Weight (kg)</label>
+                            <input type="number" id="cfg-weight" value="70" onchange="HydroApp.updateSettings()" class="w-full bg-slate-800 border border-slate-700 rounded-xl p-2 text-xs font-semibold text-white">
+                        </div>
+                        <div>
+                            <label class="text-[11px] font-medium text-slate-400 block mb-1">Daily Activity (Mins)</label>
+                            <input type="number" id="cfg-activity" value="30" onchange="HydroApp.updateSettings()" class="w-full bg-slate-800 border border-slate-700 rounded-xl p-2 text-xs font-semibold text-white">
+                        </div>
+                    </div>
+                    <div>
+                        <label class="text-[11px] font-medium text-slate-400 block mb-1">Climate Condition</label>
+                        <select id="cfg-climate" onchange="HydroApp.updateSettings()" class="w-full bg-slate-800 border border-slate-700 rounded-xl p-2 text-xs font-semibold text-white">
+                            <option value="moderate">Moderate / Tempered (1.0x)</option>
+                            <option value="hot">Hot / Tropical (+500 mL)</option>
+                            <option value="cold">Cold / High Altitude (+250 mL)</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="bg-slate-900 border border-slate-800 p-4 rounded-2xl space-y-3">
+                    <h3 class="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
+                        <i data-lucide="shield" class="w-3.5 h-3.5 text-hydro-400"></i> Privacy & Data
+                    </h3>
+                    <div class="flex flex-col gap-2">
+                        <button onclick="HydroApp.reopenConsentModal()" class="w-full py-2.5 px-3 bg-slate-800 hover:bg-slate-750 text-slate-200 border border-slate-700 rounded-xl text-xs font-semibold flex items-center justify-between">
+                            <span>Manage GDPR Privacy Preferences</span><i data-lucide="chevron-right" class="w-4 h-4 text-slate-400"></i>
+                        </button>
+                        <button onclick="HydroApp.toggleTermsModal(true)" class="w-full py-2.5 px-3 bg-slate-800 hover:bg-slate-750 text-indigo-300 border border-slate-700 rounded-xl text-xs font-semibold flex items-center justify-between">
+                            <span>View Terms & Legal Responsibility</span><i data-lucide="file-text" class="w-4 h-4 text-indigo-400"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+        </main>
+
+        <!-- Bottom Navigation Bar -->
+        <nav class="absolute bottom-0 left-0 right-0 h-16 bg-slate-900/95 border-t border-slate-800 backdrop-blur flex items-center justify-around px-2 z-20">
+            <button onclick="HydroApp.switchTab('dashboard')" id="nav-dashboard" class="flex flex-col items-center justify-center w-full h-full text-hydro-400">
+                <i data-lucide="droplet" class="w-5 h-5 mb-0.5"></i><span class="text-[10px] font-bold">Hydrate</span>
+            </button>
+            <button onclick="HydroApp.switchTab('map')" id="nav-map" class="flex flex-col items-center justify-center w-full h-full text-slate-500 hover:text-slate-300">
+                <i data-lucide="map-pin" class="w-5 h-5 mb-0.5"></i><span class="text-[10px] font-bold">Fountains</span>
+            </button>
+            <button onclick="HydroApp.switchTab('settings')" id="nav-settings" class="flex flex-col items-center justify-center w-full h-full text-slate-500 hover:text-slate-300">
+                <i data-lucide="settings" class="w-5 h-5 mb-0.5"></i><span class="text-[10px] font-bold">Settings</span>
+            </button>
+        </nav>
+    </div>
+
+    <!-- Application JavaScript & PWA Service Worker Registration -->
+    <script>
+        // Register PWA Service Worker
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('./sw.js')
+                    .then(reg => console.log('PWA Service Worker registered:', reg.scope))
+                    .catch(err => console.log('Service Worker registration failed:', err));
+            });
+        }
+
+        const HydroApp = (function() {
+            const state = {
+                consents: { mandatoryAccepted: false, geo: false, ads: false, version: 'v1.0' },
+                user: { weight: 70, activity: 30, climate: 'moderate', targetMl: 2450, points: 0, adFree: false },
+                logs: [],
+                fountains: [
+                    { id: 1, lat: 45.4642, lng: 9.1900, name: 'Piazza del Duomo Fountain', verifiedBy: ['user1', 'user2'] },
+                    { id: 2, lat: 45.4705, lng: 9.1793, name: 'Sempione Park Hydration Post', verifiedBy: ['user1'] }
+                ],
+                activeTab: 'dashboard',
+                watchView: false,
+                userLocation: { lat: 45.4642, lng: 9.1900 },
+                leafletMap: null
+            };
+
+            const AvatarSVGs = {
+                dehydrated: `<svg viewBox="0 0 100 100" class="w-full h-full drop-shadow-md"><path d="M50 10 C30 45 20 60 20 75 A30 30 0 0 0 80 75 C80 60 70 45 50 10 Z" fill="#38bdf8" /><circle cx="40" cy="65" r="4" fill="#0f172a" /><circle cx="60" cy="65" r="4" fill="#0f172a" /><path d="M40 82 Q50 74 60 82" stroke="#0f172a" stroke-width="3" fill="none" stroke-linecap="round" /></svg>`,
+                happy: `<svg viewBox="0 0 100 100" class="w-full h-full drop-shadow-md animate-float"><path d="M50 10 C30 45 20 60 20 75 A30 30 0 0 0 80 75 C80 60 70 45 50 10 Z" fill="#0ea5e9" /><circle cx="40" cy="60" r="4.5" fill="#ffffff" /><circle cx="60" cy="60" r="4.5" fill="#ffffff" /><circle cx="40" cy="60" r="2" fill="#0f172a" /><circle cx="60" cy="60" r="2" fill="#0f172a" /><path d="M38 72 Q50 82 62 72" stroke="#ffffff" stroke-width="3" fill="none" stroke-linecap="round" /></svg>`
+            };
+
+            function init() {
+                loadLocalStorage();
+                calculateTarget();
+                renderAvatar();
+                updateProgressUI();
+                renderLogs();
+                checkGDPRStatus();
+                lucide.createIcons();
+            }
+
+            function loadLocalStorage() {
+                const c = localStorage.getItem('hl_consents');
+                if (c) state.consents = JSON.parse(c);
+                const u = localStorage.getItem('hl_user');
+                if (u) state.user = JSON.parse(u);
+                const l = localStorage.getItem('hl_logs');
+                if (l) state.logs = JSON.parse(l);
+            }
+
+            function saveLocalStorage() {
+                localStorage.setItem('hl_consents', JSON.stringify(state.consents));
+                localStorage.setItem('hl_user', JSON.stringify(state.user));
+                localStorage.setItem('hl_logs', JSON.stringify(state.logs));
+            }
+
+            function calculateTarget() {
+                let target = state.user.weight * 35 + (state.user.activity / 30) * 350;
+                if (state.user.climate === 'hot') target += 500;
+                if (state.user.climate === 'cold') target += 250;
+                state.user.targetMl = Math.round(target);
+            }
+
+            function renderAvatar() {
+                const current = getCurrentIntake();
+                const pct = (current / state.user.targetMl) * 100;
+                const container = document.getElementById('avatar-container');
+                const label = document.getElementById('avatar-emotion-label');
+                const dialogue = document.getElementById('avatar-dialogue');
+
+                if (pct < 40) {
+                    container.innerHTML = AvatarSVGs.dehydrated;
+                    label.textContent = "Hydro • Low Hydration";
+                    dialogue.textContent = '"Your fluid level is low. Drinking water improves energy levels and prevents fatigue."';
+                } else {
+                    container.innerHTML = AvatarSVGs.happy;
+                    label.textContent = "Hydro • Optimal";
+                    dialogue.textContent = '"Great job! Your hydration level supports peak performance."';
+                }
+                const watchBox = document.getElementById('watch-avatar-box');
+                if (watchBox) watchBox.innerHTML = container.innerHTML;
+            }
+
+            function updateProgressUI() {
+                const current = getCurrentIntake();
+                const target = state.user.targetMl;
+                const pct = Math.min(100, Math.round((current / target) * 100));
+
+                document.getElementById('gauge-pct').textContent = `${pct}%`;
+                document.getElementById('gauge-detail').textContent = `${current} / ${target} mL`;
+                document.getElementById('gauge-remaining').textContent = `Remaining: ${Math.max(0, target - current)} mL`;
+                document.getElementById('liquid-wave').style.height = `${pct}%`;
+                document.getElementById('watch-pct').textContent = `${pct}%`;
+                document.getElementById('watch-sub').textContent = `${current} / ${target} mL`;
+                document.getElementById('points-display').textContent = state.user.points;
+            }
+
+            function getCurrentIntake() {
+                const today = new Date().toISOString().split('T')[0];
+                return state.logs.filter(l => l.date === today).reduce((sum, i) => sum + i.effectiveMl, 0);
+            }
+
+            function addDrink(type, rawMl) {
+                const bhi = { water: 1.0, tea: 0.9, coffee: 0.8, electrolyte: 1.15 };
+                const effectiveMl = Math.round(rawMl * (bhi[type] || 1.0));
+                state.logs.unshift({
+                    id: Date.now(),
+                    date: new Date().toISOString().split('T')[0],
+                    time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                    type, rawMl, effectiveMl
+                });
+                saveLocalStorage();
+                renderAvatar();
+                updateProgressUI();
+                renderLogs();
+            }
+
+            function renderLogs() {
+                const list = document.getElementById('log-list');
+                const today = new Date().toISOString().split('T')[0];
+                const logs = state.logs.filter(l => l.date === today);
+                if (logs.length === 0) {
+                    list.innerHTML = `<p class="text-xs text-slate-500 text-center py-4">No water logged today yet.</p>`;
+                    return;
+                }
+                list.innerHTML = logs.map(l => `
+                    <div class="flex items-center justify-between bg-slate-800/50 p-2 rounded-xl text-xs">
+                        <div class="flex items-center space-x-2"><span class="capitalize font-bold text-white">${l.type}</span><span class="text-slate-400">${l.time}</span></div>
+                        <div class="flex items-center space-x-3"><span class="font-semibold text-hydro-400">+${l.effectiveMl} mL</span>
+                        <button onclick="HydroApp.deleteLog(${l.id})" class="text-slate-500 hover:text-red-400"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i></button></div>
+                    </div>
+                `).join('');
+                lucide.createIcons();
+            }
+
+            function deleteLog(id) {
+                state.logs = state.logs.filter(l => l.id !== id);
+                saveLocalStorage();
+                renderAvatar();
+                updateProgressUI();
+                renderLogs();
+            }
+
+            function clearLogs() {
+                state.logs = [];
+                saveLocalStorage();
+                renderAvatar();
+                updateProgressUI();
+                renderLogs();
+            }
+
+            function switchTab(tabId) {
+                ['dashboard', 'map', 'settings'].forEach(t => {
+                    document.getElementById(`tab-${t}`).classList.add('hidden');
+                    document.getElementById(`nav-${t}`).classList.remove('text-hydro-400');
+                    document.getElementById(`nav-${t}`).classList.add('text-slate-500');
+                });
+                document.getElementById(`tab-${tabId}`).classList.remove('hidden');
+                document.getElementById(`nav-${tabId}`).classList.add('text-hydro-400');
+                document.getElementById(`nav-${tabId}`).classList.remove('text-slate-500');
+                if (tabId === 'map' && !state.leafletMap) initMap();
+            }
+
+            function toggleWatchView() {
+                state.watchView = !state.watchView;
+                document.getElementById('watch-view').classList.toggle('hidden', !state.watchView);
+                document.getElementById('tab-dashboard').classList.toggle('hidden', state.watchView);
+            }
+
+            function initMap() {
+                state.leafletMap = L.map('fountain-map').setView([state.userLocation.lat, state.userLocation.lng], 14);
+                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OpenStreetMap' }).addTo(state.leafletMap);
+                L.marker([state.userLocation.lat, state.userLocation.lng]).addTo(state.leafletMap).bindPopup('Your Location');
+                renderFountains();
+            }
+
+            function renderFountains() {
+                state.fountains.forEach(f => L.marker([f.lat, f.lng]).addTo(state.leafletMap).bindPopup(`<b>${f.name}</b><br>Verifications: ${f.verifiedBy.length}/2`));
+                const list = document.getElementById('fountains-list');
+                list.innerHTML = state.fountains.map(f => `
+                    <div class="bg-slate-800/60 p-2.5 rounded-xl flex items-center justify-between text-xs">
+                        <div><div class="font-bold text-white">${f.name}</div><div class="text-[10px] text-slate-400">Validated by ${f.verifiedBy.length} users</div></div>
+                        <button onclick="HydroApp.verifyFountain(${f.id})" class="px-2.5 py-1 bg-hydro-600/30 text-hydro-300 border border-hydro-500/40 rounded-lg font-semibold text-[10px]">Verify (+5 pts)</button>
+                    </div>
+                `).join('');
+            }
+
+            function enablePinMode() {
+                alert("Click anywhere on the map to pin a fountain location!");
+                if (!state.leafletMap) return;
+                state.leafletMap.once('click', e => {
+                    state.fountains.push({ id: Date.now(), lat: e.latlng.lat, lng: e.latlng.lng, name: 'Pinned Fountain', verifiedBy: ['currentUser'] });
+                    state.user.points += 10;
+                    saveLocalStorage();
+                    renderFountains();
+                    updateProgressUI();
+                });
+            }
+
+            function verifyFountain(id) {
+                const f = state.fountains.find(item => item.id === id);
+                if (f && !f.verifiedBy.includes('currentUser')) {
+                    f.verifiedBy.push('currentUser');
+                    state.user.points += 5;
+                    saveLocalStorage();
+                    renderFountains();
+                    updateProgressUI();
+                    alert("Verification submitted! Earned +5 points.");
+                } else {
+                    alert("Already verified.");
+                }
+            }
+
+            function checkGDPRStatus() {
+                if (!state.consents.mandatoryAccepted) document.getElementById('gdpr-modal').classList.remove('hidden');
+            }
+            function acceptGDPRConsents() {
+                state.consents.mandatoryAccepted = true;
+                state.consents.geo = document.getElementById('consent-geo').checked;
+                state.consents.ads = document.getElementById('consent-ads').checked;
+                saveLocalStorage();
+                document.getElementById('gdpr-modal').classList.add('hidden');
+                document.getElementById('gdpr-lockout').classList.add('hidden');
+            }
+            function rejectMandatoryGDPR() {
+                document.getElementById('gdpr-modal').classList.add('hidden');
+                document.getElementById('gdpr-lockout').classList.remove('hidden');
+            }
+            function reopenConsentModal() {
+                document.getElementById('gdpr-lockout').classList.add('hidden');
+                document.getElementById('gdpr-modal').classList.remove('hidden');
+            }
+            function toggleTermsModal(show) {
+                document.getElementById('terms-modal').classList.toggle('hidden', !show);
+            }
+            function redeemAdFree() {
+                if (state.user.points >= 50) {
+                    state.user.points -= 50;
+                    state.user.adFree = true;
+                    saveLocalStorage();
+                    document.getElementById('ad-banner').classList.add('hidden');
+                    updateProgressUI();
+                    alert("Ad-Free Pass unlocked!");
+                } else {
+                    alert("Need at least 50 HydroPoints to remove ads.");
+                }
+            }
+            function updateSettings() {
+                state.user.weight = parseFloat(document.getElementById('cfg-weight').value) || 70;
+                state.user.activity = parseFloat(document.getElementById('cfg-activity').value) || 30;
+                state.user.climate = document.getElementById('cfg-climate').value;
+                calculateTarget();
+                saveLocalStorage();
+                renderAvatar();
+                updateProgressUI();
+            }
+
+            return {
+                init, addDrink, quickAddWater: ml => addDrink('water', ml),
+                deleteLog, clearLogs, switchTab, toggleWatchView,
+                enablePinMode, verifyFountain, acceptGDPRConsents,
+                rejectMandatoryGDPR, reopenConsentModal, toggleTermsModal,
+                redeemAdFree, updateSettings
+            };
+        })();
+
+        document.addEventListener('DOMContentLoaded', HydroApp.init);
+    </script>
+</body>
+</html>
